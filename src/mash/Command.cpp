@@ -191,7 +191,7 @@ Command::Command()
     addAvailableOption("factor", Option(Option::Number, "f", "Window", "Compression factor", "100"));
 
 	// add this option to only compute the distances between the specific pairs 
-    addAvailableOption("pair", Option(Option::String, "P", "Sketch", "Only compute the distance between the specific pairs", ""));
+    addAvailableOption("pair", Option(Option::File, "P", "Sketch", "Specify a CSV file containing query-reference pairs to compute distances only for those specified pairs.", ""));
     
     addCategory("", "");
     addCategory("Input", "Input");
