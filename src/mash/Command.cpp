@@ -189,6 +189,9 @@ Command::Command()
     addAvailableOption("illumina", Option(Option::Boolean, "illumina", "", "Use default settings for Illumina sequences.", ""));
     addAvailableOption("nanopore", Option(Option::Boolean, "nanopore", "", "Use default settings for Oxford Nanopore sequences.", ""));
     addAvailableOption("factor", Option(Option::Number, "f", "Window", "Compression factor", "100"));
+
+	// add this option to only compute the distances between the specific pairs 
+    addAvailableOption("pair", Option(Option::String, "P", "Sketch", "Only compute the distance between the specific pairs", ""));
     
     addCategory("", "");
     addCategory("Input", "Input");
@@ -373,6 +376,7 @@ void Command::useSketchOptions()
     useOption("minCov");
     useOption("targetCov");
     useOption("genome");
+    useOption("pair");
     //useOption("illumina");
     //useOption("pacbio");
     //useOption("nanopore");

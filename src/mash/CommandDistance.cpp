@@ -11,6 +11,7 @@
 #include "ThreadPool.h"
 #include "sketchParameterSetup.h"
 #include <math.h>
+#include <fstream>
 
 #ifdef USE_BOOST
     #include <boost/math/distributions/binomial.hpp>
@@ -39,6 +40,16 @@ CommandDistance::CommandDistance()
     addOption("distance", Option(Option::Number, "d", "Output", "Maximum distance to report.", "1.0", 0., 1.));
     addOption("comment", Option(Option::Boolean, "C", "Output", "Show comment fields with reference/query names (denoted with ':').", "1.0", 0., 1.));
     useSketchOptions();
+}
+
+void rmInvisibleChar(string& s) {
+	size_t i = s.length();
+	while (i > 0 && (s[i-1] < '!' || s[i-1] > '~'))
+		i--;
+	if (i == 0)
+		s = "";
+	else if (i < s.length())
+		s = s.substr(0,i);
 }
 
 int CommandDistance::run() const
@@ -207,29 +218,86 @@ int CommandDistance::run() const
         pairsPerThread = maxPairsPerThread;
     }
     
-    uint64_t iFloor = pairsPerThread / sketchRef.getReferenceCount();
-    uint64_t iMod = pairsPerThread % sketchRef.getReferenceCount();
-    
-    for ( uint64_t i = 0, j = 0; i < sketchQuery.getReferenceCount(); i += iFloor, j += iMod )
-    {
-        if ( j >= sketchRef.getReferenceCount() )
-        {
-            if ( i == sketchQuery.getReferenceCount() - 1 )
-            {
-                break;
-            }
-            
-            i++;
-            j -= sketchRef.getReferenceCount();
-        }
-        
-        threadPool.runWhenThreadAvailable(new CompareInput(sketchRef, sketchQuery, j, i, pairsPerThread, parameters, distanceMax, pValueMax));
-        
-        while ( threadPool.outputAvailable() )
-        {
-            writeOutput(threadPool.popOutputWhenAvailable(), table, comment);
-        }
-    }
+    string pairFile = options.at("pair").argument;
+	if (pairFile != "") {
+		// User inputs the pairFile
+		// so only those distances between the specific pairs of query and reference will be computed
+		
+		pairsPerThread = 1;
+		
+		vector<uint64_t> queryIndices;
+		vector<uint64_t> refIndices;
+		
+		std::ifstream finPF;
+		finPF.open(pairFile);
+		string aline;
+		// skip the first header line
+		if (getline(finPF,aline)) {
+			int lineno = 1;
+			while (getline(finPF, aline)) {
+				lineno++;
+				mash::rmInvisibleChar(aline);
+				if (aline.length() > 0) {
+					size_t pos = aline.find(",");
+					if (pos == string::npos) {
+						cerr << "Error! Comma does not appear in the line " << lineno << endl;
+						exit(1);
+					} else {
+						string queryID = aline.substr(0,pos);
+						uint64_t queryIndex = sketchQuery.getReferenceIndex(queryID);
+						string refID = aline.substr(pos+1);
+						uint64_t refIndex = sketchRef.getReferenceIndex(refID);
+						
+						if (queryIndex == -1) {
+							cerr << "Error! Uknown query '" << queryID << "' in the line " << lineno << endl;
+							exit(1);
+						}
+						if (refIndex == -1) {
+							cerr << "Error! Uknown reference '" << refID << "' in the line " << lineno << endl;
+							exit(1);
+						}
+						queryIndices.push_back(queryIndex);
+						refIndices.push_back(refIndex);
+					}
+				}
+			}
+		}
+		finPF.close();
+		
+		for ( uint64_t k = 0; k < queryIndices.size(); k++ ) {
+			threadPool.runWhenThreadAvailable(new CompareInput(sketchRef, sketchQuery, refIndices[k], queryIndices[k], pairsPerThread, parameters, distanceMax, pValueMax));
+			while ( threadPool.outputAvailable() )
+			{
+				writeOutput(threadPool.popOutputWhenAvailable(), table, comment);
+			}
+		}
+	} else {
+		// no pairFile is inputted, apply the original procedure
+
+		uint64_t iFloor = pairsPerThread / sketchRef.getReferenceCount();
+		uint64_t iMod = pairsPerThread % sketchRef.getReferenceCount();
+		
+		for ( uint64_t i = 0, j = 0; i < sketchQuery.getReferenceCount(); i += iFloor, j += iMod )
+		{
+			if ( j >= sketchRef.getReferenceCount() )
+			{
+				if ( i == sketchQuery.getReferenceCount() - 1 )
+				{
+					break;
+				}
+				
+				i++;
+				j -= sketchRef.getReferenceCount();
+			}
+			
+			threadPool.runWhenThreadAvailable(new CompareInput(sketchRef, sketchQuery, j, i, pairsPerThread, parameters, distanceMax, pValueMax));
+			
+			while ( threadPool.outputAvailable() )
+			{
+				writeOutput(threadPool.popOutputWhenAvailable(), table, comment);
+			}
+		}
+	}
     
     while ( threadPool.running() )
     {
